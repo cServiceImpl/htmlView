@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>婚礼流程表</title>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -140,7 +139,7 @@
 <body>
 <div class="container">
     <h1>💒 婚礼流程表</h1>
-    <div class="subtitle">新郎新娘双时间轴 · 数据云端同步（GitHub）· 支持导出 PDF</div>
+    <div class="subtitle">新郎新娘双时间轴 · 数据云端同步（GitHub）· 支持导出图片</div>
     <div style="text-align:center; font-size:12px; color:#999; margin:-12px 0 16px;" id="cloudStatus">数据源：本地</div>
 
     <div class="now-card">
@@ -175,7 +174,7 @@
                 <button class="btn btn-refresh" onclick="initFromCloud(true)">🔄 刷新云端</button>
                 <button class="btn btn-admin" id="btnAdmin" onclick="toggleAdmin()">🛡️ 管理员登录</button>
                 <button class="btn btn-token" id="btnToken" style="display:none" onclick="configToken()">🔑 令牌管理</button>
-                <button class="btn btn-pdf" id="btnPdf" onclick="exportPDF()">📄 导出 PDF</button>
+                <button class="btn btn-pdf" id="btnPdf" onclick="exportImage()">🖼️ 导出图片</button>
                 <button class="btn btn-share" onclick="shareCode()">🔗 生成分享链接</button>
                 <button class="btn btn-import" onclick="importData()">📥 导入</button>
             </div>
@@ -402,42 +401,39 @@ function tickNow() {
     document.getElementById("nextItem").innerHTML = html;
 }
 
-// ========== 导出 PDF ==========
-async function exportPDF() {
+// ========== 导出图片 ==========
+async function exportImage() {
     const btn = document.getElementById("btnPdf");
     btn.disabled = true;
     btn.textContent = "生成中…";
+    const el = document.getElementById("printArea");
+    // 记录导出前的状态，导出后恢复
+    const doneItems = [];
     try {
-        const el = document.getElementById("printArea");
-        // 隐藏编辑/删除按钮，PDF 里不需要
-        el.querySelectorAll(".tl-actions").forEach(x => x.style.visibility = "hidden");
-        const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff" });
-        el.querySelectorAll(".tl-actions").forEach(x => x.style.visibility = "");
+        // 隐藏编辑/删除按钮，图片里不需要
+        const actions = el.querySelectorAll(".tl-actions");
+        actions.forEach(x => x.style.visibility = "hidden");
+        // 临时去掉“已完成置灰”状态，保持原色不因时间变灰
+        el.querySelectorAll(".tl-item.done").forEach(x => {
+            doneItems.push(x);
+            x.classList.remove("done");
+        });
 
-        const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF("p", "mm", "a4");
-        const pageW = 210, pageH = 297, margin = 10;
-        const imgW = pageW - margin * 2;
-        // 按页高切分长图
-        const pxPerPage = Math.floor(canvas.height * (pageH - margin * 2) / imgW);
-        let rendered = 0, page = 0;
-        while (rendered < canvas.height) {
-            const sliceH = Math.min(pxPerPage, canvas.height - rendered);
-            const tmp = document.createElement("canvas");
-            tmp.width = canvas.width;
-            tmp.height = sliceH;
-            tmp.getContext("2d").drawImage(canvas, 0, rendered, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
-            if (page > 0) pdf.addPage();
-            pdf.addImage(tmp.toDataURL("image/jpeg", 0.95), "JPEG", margin, margin, imgW, sliceH * imgW / canvas.width);
-            rendered += sliceH;
-            page++;
-        }
-        pdf.save(`婚礼流程表_${new Date().toISOString().slice(0, 10)}.pdf`);
+        const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff" });
+
+        // 转成图片下载（长图，保持页面原有格式）
+        const a = document.createElement("a");
+        a.href = canvas.toDataURL("image/png");
+        a.download = `婚礼流程表_${new Date().toISOString().slice(0, 10)}.png`;
+        a.click();
     } catch (err) {
-        alert("导出 PDF 失败：" + err.message);
+        alert("导出图片失败：" + err.message);
     } finally {
+        // 恢复隐藏的按钮和置灰状态
+        el.querySelectorAll(".tl-actions").forEach(x => x.style.visibility = "");
+        doneItems.forEach(x => x.classList.add("done"));
         btn.disabled = false;
-        btn.textContent = "📄 导出 PDF";
+        btn.textContent = "🖼️ 导出图片";
     }
 }
 
