@@ -56,6 +56,7 @@
     .btn-cloud { background: #16a085; color: #fff; }
     .btn-refresh { background: #f39c12; color: #fff; }
     .btn-token { background: #fff; color: #16a085; border: 1px solid #16a085; }
+    .btn-admin { background: #fff; color: #7f8c8d; border: 1px solid #95a5a6; }
     .btn-clear { background: #fff; color: #c0392b; border: 1px solid #c0392b; }
 
     /* 双栏时间轴 */
@@ -170,9 +171,10 @@
         <div class="toolbar">
             <h2>📖 当天流程</h2>
             <div>
-                <button class="btn btn-cloud" id="btnCloud" onclick="saveToCloud()">☁️ 保存到云端</button>
+                <button class="btn btn-cloud" id="btnCloud" style="display:none" onclick="saveToCloud()">☁️ 保存到云端</button>
                 <button class="btn btn-refresh" onclick="initFromCloud(true)">🔄 刷新云端</button>
-                <button class="btn btn-token" id="btnToken" onclick="configToken()">🔑 配置令牌</button>
+                <button class="btn btn-admin" id="btnAdmin" onclick="toggleAdmin()">🛡️ 管理员登录</button>
+                <button class="btn btn-token" id="btnToken" style="display:none" onclick="configToken()">🔑 令牌管理</button>
                 <button class="btn btn-pdf" id="btnPdf" onclick="exportPDF()">📄 导出 PDF</button>
                 <button class="btn btn-share" onclick="shareCode()">🔗 生成分享链接</button>
                 <button class="btn btn-import" onclick="importData()">📥 导入</button>
@@ -559,6 +561,7 @@ function onImportFile(input) {
 // 从而实现多端看到同一份数据。
 // 读取无需任何凭证；写入需要一个 GitHub Personal Access Token（只存在发布者自己的浏览器里，不会写进仓库）
 const TOKEN_KEY = "wedding_gh_token";
+const MGR_KEY = "wedding_is_manager";
 
 function tokenHelp(repo) {
     return "获取 GitHub 令牌（只需一次）：\n\n" +
@@ -569,13 +572,63 @@ function tokenHelp(repo) {
         "5. 生成后复制粘贴到下面：";
 }
 
-// 独立的令牌配置入口
-function configToken() {
-    const ci = cloudInfo();
-    if (!ci) {
-        alert("本地文件无法使用云端功能。\n\n请打开线上地址：\nhttps://cserviceimpl.github.io/htmlView/");
+// ========== 管理员模式：只有持有有效令牌的设备能发布到云端 ==========
+function isManager() {
+    return localStorage.getItem(MGR_KEY) === "1" && localStorage.getItem(TOKEN_KEY);
+}
+
+function updateManagerUI() {
+    const mgr = isManager();
+    document.getElementById("btnCloud").style.display = mgr ? "" : "none";
+    document.getElementById("btnToken").style.display = mgr ? "" : "none";
+    const admin = document.getElementById("btnAdmin");
+    admin.style.display = "";
+    admin.textContent = mgr ? "🚪 退出管理员" : "🛡️ 管理员登录";
+}
+
+async function toggleAdmin() {
+    if (isManager()) {
+        if (!confirm("退出管理员模式？（会同时清除本机保存的令牌）")) return;
+        localStorage.removeItem(MGR_KEY);
+        localStorage.removeItem(TOKEN_KEY);
+        updateManagerUI();
         return;
     }
+    const ci = cloudInfo();
+    if (!ci) {
+        alert("本地文件无法使用管理员功能。\n\n请打开线上地址：\nhttps://cserviceimpl.github.io/htmlView/");
+        return;
+    }
+    const token = prompt(
+        "管理员登录（仅婚礼流程发布人需要）：\n\n" +
+        "其他亲友无需登录，可本地编辑后点「🔗 生成分享链接」发给管理员汇总。\n\n" +
+        tokenHelp(ci.repo)
+    );
+    if (!token || !token.trim()) return;
+    try {
+        // 用仓库信息接口验证令牌及其写入权限
+        const res = await fetch(`https://api.github.com/repos/${ci.owner}/${ci.repo}`, {
+            headers: { Authorization: "Bearer " + token.trim(), Accept: "application/vnd.github+json" }
+        });
+        if (!res.ok) throw new Error("令牌验证失败 HTTP " + res.status);
+        const data = await res.json();
+        if (!data.permissions || !data.permissions.push) throw new Error("该令牌没有此仓库的写入权限，请按提示勾选 Contents: Read and write");
+        localStorage.setItem(TOKEN_KEY, token.trim());
+        localStorage.setItem(MGR_KEY, "1");
+        updateManagerUI();
+        alert("管理员登录成功！\n\n现在可以点「☁️ 保存到云端」发布流程，其他人刷新即可看到。");
+    } catch (e) {
+        alert("管理员登录失败：" + e.message);
+    }
+}
+
+// 根据管理员状态初始化按钮显示
+updateManagerUI();
+
+// 独立的令牌配置入口（仅管理员可见）
+function configToken() {
+    const ci = cloudInfo();
+    if (!ci) return;
     const cur = localStorage.getItem(TOKEN_KEY);
     const tip = cur
         ? "已配置令牌（" + cur.slice(0, 8) + "…）\n\n留空点确定 = 清除已保存的令牌；否则输入新令牌替换。"
@@ -585,6 +638,8 @@ function configToken() {
     token = token.trim();
     if (!token) {
         localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(MGR_KEY);
+        updateManagerUI();
         alert("已清除本机保存的令牌");
     } else {
         localStorage.setItem(TOKEN_KEY, token);
