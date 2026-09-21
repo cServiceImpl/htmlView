@@ -178,7 +178,6 @@
                 <button class="btn btn-pdf" id="btnPdf" onclick="exportPDF()">📄 导出 PDF</button>
                 <button class="btn btn-share" onclick="shareCode()">🔗 生成分享链接</button>
                 <button class="btn btn-import" onclick="importData()">📥 导入</button>
-                <button class="btn btn-clear" onclick="clearAll()">清空全部</button>
             </div>
         </div>
         <div class="columns" id="printArea">
@@ -331,12 +330,7 @@ function deleteItem(id) {
     render();
 }
 
-function clearAll() {
-    if (!confirm("确定清空全部流程吗？此操作不可恢复！")) return;
-    items = [];
-    saveItems();
-    render();
-}
+
 
 // ========== 渲染 ==========
 function sortedBy(side) {
@@ -455,24 +449,44 @@ function encodeItems() {
 }
 
 function decodeItems(code) {
-    const arr = JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
+    // 去除微信等应用插入的换行/空格，避免 base64 被截断报错
+    const clean = String(code).replace(/\s+/g, "");
+    const arr = JSON.parse(decodeURIComponent(escape(atob(clean))));
     if (!Array.isArray(arr)) throw new Error("格式错误");
     return arr.map(x => ({ id: x.id || Date.now() + Math.random(), side: x.side || "bride", time: x.time, name: x.name, remark: x.remark || "" }));
 }
 
-// 链接带 #d= 分享数据时自动弹出导入确认
+// 从一段文本中提取分享数据：支持完整链接、HJLC1 分享码、纯 base64
+function extractPayload(text) {
+    text = String(text || "").trim();
+    if (!text) throw new Error("内容为空");
+    if (text.startsWith("HJLC1:")) return text.slice(6);
+    // 完整分享链接（?d= 或 #d=）
+    const um = text.match(/[?#]d=([^&\s]+)/);
+    if (um) return decodeURIComponent(um[1]);
+    // 纯 base64（可能带换行）
+    if (/^[A-Za-z0-9+/=\s]+$/.test(text) && text.length > 40) return text;
+    throw new Error("无法识别的内容");
+}
+
+// 链接带分享数据（?d= 或旧版 #d=）时自动弹出导入确认
 function checkHash() {
-    const m = location.hash.match(/^#d=(.+)$/);
-    if (!m) return;
+    let payload = null;
+    try { payload = new URLSearchParams(location.search).get("d"); } catch (e) { /* 旧浏览器 */ }
+    if (!payload) {
+        const m = location.hash.match(/^#d=(.+)$/);
+        if (m) { try { payload = decodeURIComponent(m[1]); } catch (e) { payload = m[1]; } }
+    }
+    if (!payload) return;
     try {
-        const imported = decodeItems(decodeURIComponent(m[1]));
+        const imported = decodeItems(payload);
         if (confirm(`分享链接中包含 ${imported.length} 个流程节点，是否导入并覆盖当前流程？`)) {
             items = imported;
             saveItems();
             render();
         }
     } catch (e) {
-        alert("分享链接数据无效");
+        alert("分享链接数据无效（可能被聊天软件截断）。\n\n请改用「📥 导入」→ 粘贴对方发来的完整链接或分享码。");
     }
     history.replaceState(null, "", location.pathname);
 }
@@ -491,11 +505,11 @@ function shareCode() {
         }
         return;
     }
-    // 线上：生成直开链接
-    const url = location.origin + location.pathname + "#d=" + encodeURIComponent(encodeItems());
+    // 线上：生成直开链接（用 ?d= 查询参数，比 #锚点 更不易被聊天软件丢弃）
+    const url = location.origin + location.pathname + "?d=" + encodeURIComponent(encodeItems());
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(url).then(
-            () => alert("分享链接已复制！\n\n发给对方（微信/QQ均可），点开即可自动加载这份流程。"),
+            () => alert("分享链接已复制！\n\n发给对方（微信/QQ均可），点开即可自动加载这份流程。\n\n若对方点开后没反应（链接被截断），可让他点「📥 导入」粘贴这条完整链接。"),
             () => prompt("请手动复制分享链接：", url)
         );
     } else {
@@ -506,14 +520,14 @@ function shareCode() {
 function importData() {
     const mode = prompt(
         "请选择导入方式：\n\n" +
-        "输入 1 = 粘贴分享码（推荐，微信发来的那串文字）\n" +
+        "输入 1 = 粘贴分享链接 / 分享码（推荐）\n" +
         "输入 2 = 选择 JSON 文件\n\n" +
         "（直接点取消则不导入）", "1");
     if (mode === "1") {
-        const code = prompt("请粘贴分享码（以 HJLC1: 开头的一串文字）：");
+        const code = prompt("请粘贴对方发来的分享链接（含 ?d= 的一长串网址）\n或分享码（HJLC1: 开头）：");
         if (!code) return;
         try {
-            const imported = decodeItems(code.replace(/^HJLC1:/, ""));
+            const imported = decodeItems(extractPayload(code));
             if (confirm(`解析到 ${imported.length} 个流程节点，是否覆盖当前流程？`)) {
                 items = imported;
                 saveItems();
@@ -521,7 +535,7 @@ function importData() {
                 alert("导入成功！");
             }
         } catch (e) {
-            alert("分享码无效：" + e.message);
+            alert("导入失败：" + e.message + "\n\n请确认粘贴的是完整内容（微信传输可能截断长文本）。" );
         }
     } else if (mode === "2") {
         document.getElementById("importFile").click();
@@ -536,8 +550,8 @@ function onImportFile(input) {
         try {
             let imported;
             const text = String(e.target.result);
-            if (text.trim().startsWith("HJLC1:")) {
-                imported = decodeItems(text.trim().replace(/^HJLC1:/, ""));
+            if (text.trim().startsWith("HJLC1:") || /[?#]d=/.test(text)) {
+                imported = decodeItems(extractPayload(text));
             } else {
                 const arr = JSON.parse(text);
                 if (!Array.isArray(arr)) throw new Error("格式错误");
