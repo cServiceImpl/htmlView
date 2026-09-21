@@ -55,6 +55,7 @@
     .btn-pdf { background: #8e44ad; color: #fff; }
     .btn-cloud { background: #16a085; color: #fff; }
     .btn-refresh { background: #f39c12; color: #fff; }
+    .btn-token { background: #fff; color: #16a085; border: 1px solid #16a085; }
     .btn-clear { background: #fff; color: #c0392b; border: 1px solid #c0392b; }
 
     /* 双栏时间轴 */
@@ -162,6 +163,7 @@
             <div>
                 <button class="btn btn-cloud" id="btnCloud" onclick="saveToCloud()">☁️ 保存到云端</button>
                 <button class="btn btn-refresh" onclick="initFromCloud(true)">🔄 刷新云端</button>
+                <button class="btn btn-token" id="btnToken" onclick="configToken()">🔑 配置令牌</button>
                 <button class="btn btn-pdf" id="btnPdf" onclick="exportPDF()">📄 导出 PDF</button>
                 <button class="btn btn-share" onclick="shareCode()">🔗 生成分享链接</button>
                 <button class="btn btn-import" onclick="importData()">📥 导入</button>
@@ -549,6 +551,38 @@ function onImportFile(input) {
 // 读取无需任何凭证；写入需要一个 GitHub Personal Access Token（只存在发布者自己的浏览器里，不会写进仓库）
 const TOKEN_KEY = "wedding_gh_token";
 
+function tokenHelp(repo) {
+    return "获取 GitHub 令牌（只需一次）：\n\n" +
+        "1. 打开 https://github.com/settings/tokens?type=beta\n" +
+        "2. Generate new token → 名称随意，如 wedding\n" +
+        "3. Repository access 选 Only select repositories → 选中 " + repo + "\n" +
+        "4. Permissions → Repository permissions → Contents 选 Read and write\n" +
+        "5. 生成后复制粘贴到下面：";
+}
+
+// 独立的令牌配置入口
+function configToken() {
+    const ci = cloudInfo();
+    if (!ci) {
+        alert("本地文件无法使用云端功能。\n\n请打开线上地址：\nhttps://cserviceimpl.github.io/htmlView/");
+        return;
+    }
+    const cur = localStorage.getItem(TOKEN_KEY);
+    const tip = cur
+        ? "已配置令牌（" + cur.slice(0, 8) + "…）\n\n留空点确定 = 清除已保存的令牌；否则输入新令牌替换。"
+        : tokenHelp(ci.repo);
+    let token = prompt(tip, "");
+    if (token === null) return;  // 点了取消，不动
+    token = token.trim();
+    if (!token) {
+        localStorage.removeItem(TOKEN_KEY);
+        alert("已清除本机保存的令牌");
+    } else {
+        localStorage.setItem(TOKEN_KEY, token);
+        alert("令牌已保存到本机浏览器（仅自己可见，不会泄露）。\n\n现在可以点「☁️ 保存到云端」发布流程了。");
+    }
+}
+
 function cloudInfo() {
     // 仅在 github.io 部署环境下启用；owner 取自主机名，repo 取自路径
     const hm = location.host.match(/^([^.]+)\.github\.io$/i);
@@ -592,15 +626,7 @@ async function saveToCloud() {
 
     let token = localStorage.getItem(TOKEN_KEY);
     if (!token) {
-        token = prompt(
-            "首次保存需要 GitHub 访问令牌（Token），用于把流程数据写回仓库。\n\n" +
-            "获取步骤（只需一次）：\n" +
-            "1. 打开 https://github.com/settings/tokens?type=beta\n" +
-            "2. Generate new token → 名称随意，如 wedding\n" +
-            "3. Repository access 选 Only select repositories → 选中 " + ci.repo + "\n" +
-            "4. Permissions → Repository permissions → Contents 选 Read and write\n" +
-            "5. 生成后复制粘贴到下面："
-        );
+        token = prompt("首次保存需要 GitHub 访问令牌（Token），用于把流程数据写回仓库。\n\n" + tokenHelp(ci.repo));
         if (!token) return;
         token = token.trim();
         localStorage.setItem(TOKEN_KEY, token);
