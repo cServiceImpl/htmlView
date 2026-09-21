@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>婚礼流程表</title>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+        background: linear-gradient(135deg, #fff5f5 0%, #ffe3e3 100%);
+        min-height: 100vh; padding: 20px; color: #333;
+    }
+    .container { max-width: 1060px; margin: 0 auto; }
+    h1 { text-align: center; color: #c0392b; margin-bottom: 8px; font-size: 26px; }
+    .subtitle { text-align: center; color: #e67e22; margin-bottom: 20px; font-size: 14px; }
+
+    /* 倒计时卡片 */
+    .now-card {
+        background: #fff; border-radius: 12px; padding: 15px 20px;
+        box-shadow: 0 2px 8px rgba(192,57,43,.12); margin-bottom: 20px;
+        display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
+    }
+    .now-card .now-time { font-size: 26px; font-weight: bold; color: #c0392b; }
+    .now-card .now-label { font-size: 13px; color: #888; }
+    .now-card .next-item { font-size: 15px; color: #333; text-align: right; }
+    .now-card .next-item b { color: #e67e22; }
+
+    /* 表单 */
+    .card {
+        background: #fff; border-radius: 12px; padding: 20px;
+        box-shadow: 0 2px 8px rgba(192,57,43,.12); margin-bottom: 20px;
+    }
+    .card h2 { font-size: 16px; color: #c0392b; margin-bottom: 15px; }
+    .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .form-row input, .form-row select {
+        padding: 9px 12px; border: 1px solid #ddd; border-radius: 8px;
+        font-size: 14px; outline: none; flex: 1; min-width: 110px;
+    }
+    .form-row input:focus, .form-row select:focus { border-color: #e67e22; }
+    #fTime { flex: 0 0 110px; min-width: 110px; }
+    #fSide { flex: 0 0 110px; min-width: 110px; }
+    .btn {
+        padding: 10px 22px; border: none; border-radius: 8px; cursor: pointer;
+        font-size: 14px; font-weight: bold; transition: opacity .2s;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-add { background: #c0392b; color: #fff; }
+    .btn-save { background: #e67e22; color: #fff; }
+    .btn-cancel { background: #fff; color: #888; border: 1px solid #ccc; }
+    .btn-share { background: #2980b9; color: #fff; }
+    .btn-import { background: #27ae60; color: #fff; }
+    .btn-pdf { background: #8e44ad; color: #fff; }
+    .btn-clear { background: #fff; color: #c0392b; border: 1px solid #c0392b; }
+
+    /* 双栏时间轴 */
+    .columns { display: flex; gap: 20px; align-items: flex-start; }
+    .col { flex: 1; min-width: 0; background: #fff; border-radius: 12px; padding: 20px;
+        box-shadow: 0 2px 8px rgba(192,57,43,.12); }
+    .col-groom { border-top: 4px solid #2980b9; }
+    .col-bride { border-top: 4px solid #c0392b; }
+    .col h2 { font-size: 17px; margin-bottom: 15px; }
+    .col-groom h2 { color: #2980b9; }
+    .col-bride h2 { color: #c0392b; }
+
+    .timeline { list-style: none; }
+    .tl-item {
+        display: flex; gap: 14px; position: relative; padding-bottom: 18px;
+    }
+    .tl-item::before {  /* 竖线 */
+        content: ""; position: absolute; left: 41px; top: 34px; bottom: 0;
+        width: 2px; background: #fadbd8;
+    }
+    .tl-item:last-child::before { display: none; }
+    .col-groom .tl-item::before { background: #d6eaf8; }
+    .tl-time {
+        flex: 0 0 70px; text-align: center; font-size: 15px; font-weight: bold;
+        color: #c0392b; background: #fadbd8; border-radius: 8px;
+        padding: 6px 0; height: fit-content;
+    }
+    .col-groom .tl-time { color: #2980b9; background: #d6eaf8; }
+    .tl-body { flex: 1; background: #fff; border: 1px solid #f5dcd8; border-radius: 10px; padding: 10px 14px; position: relative; }
+    .col-groom .tl-body { border-color: #d6eaf8; }
+    .tl-title { font-size: 15px; font-weight: bold; }
+    .tl-remark { font-size: 13px; color: #888; margin-top: 4px; }
+    .tl-gap { font-size: 12px; color: #bbb; margin-top: 6px; }
+    .tl-actions { position: absolute; right: 12px; top: 10px; font-size: 13px; }
+    .tl-actions .edit-link { color: #2980b9; cursor: pointer; margin-right: 8px; }
+    .tl-actions .del-link { color: #c0392b; cursor: pointer; }
+
+    /* 状态标记 */
+    .tl-item.done .tl-time { background: #eee !important; color: #aaa !important; }
+    .tl-item.done .tl-body { opacity: .55; }
+    .tl-item.current .tl-body { border-color: #e67e22; box-shadow: 0 0 0 2px rgba(230,126,34,.25); }
+    .tl-item.current .tl-title::after {
+        content: "● 进行中"; color: #e67e22; font-size: 12px; font-weight: normal; margin-left: 8px;
+    }
+    .empty-tip { text-align: center; color: #aaa; padding: 30px 0; }
+
+    .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
+    .toolbar h2 { margin-bottom: 0; }
+    .toolbar > div { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    @media (max-width: 900px) {
+        /* 手机端：两栏上下堆叠 */
+        .columns { flex-direction: column; }
+    }
+    @media (max-width: 640px) {
+        body { padding: 12px; }
+        h1 { font-size: 22px; }
+        .col, .card { padding: 14px; }
+        .form-row input, .form-row select { min-width: 100%; }
+        #fTime { min-width: 45%; flex: 0 0 45%; }
+        #fSide { min-width: 45%; flex: 0 0 45%; }
+        .form-row .btn { flex: 1; padding: 10px 8px; }
+        .toolbar { flex-direction: column; align-items: stretch; }
+        .toolbar h2 { text-align: center; }
+        .toolbar .btn { flex: 1; padding: 10px 6px; font-size: 13px; }
+        .tl-item::before { left: 36px; }
+        .tl-time { flex: 0 0 60px; font-size: 13px; }
+        .now-card .next-item { text-align: left; }
+    }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>💒 婚礼流程表</h1>
+    <div class="subtitle">新郎新娘双时间轴 · 实时进度 · 支持导出 PDF</div>
+
+    <div class="now-card">
+        <div>
+            <div class="now-label">当前时间</div>
+            <div class="now-time" id="nowTime">--:--</div>
+        </div>
+        <div class="next-item" id="nextItem">加载中…</div>
+    </div>
+
+    <div class="card">
+        <h2>📝 添加流程节点</h2>
+        <div class="form-row">
+            <select id="fSide">
+                <option value="bride">新娘</option>
+                <option value="groom">新郎</option>
+            </select>
+            <input type="time" id="fTime" value="06:00">
+            <input type="text" id="fName" placeholder="事项名称，如：出发接亲">
+            <input type="text" id="fRemark" placeholder="备注（可选），如：4个堵门游戏">
+            <button class="btn btn-add" id="btnAdd" onclick="addItem()">添加</button>
+            <button class="btn btn-save" id="btnSave" style="display:none" onclick="saveEdit()">保存修改</button>
+            <button class="btn btn-cancel" id="btnCancel" style="display:none" onclick="cancelEdit()">取消</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="toolbar">
+            <h2>📖 当天流程</h2>
+            <div>
+                <button class="btn btn-pdf" id="btnPdf" onclick="exportPDF()">📄 导出 PDF</button>
+                <button class="btn btn-share" onclick="shareCode()">🔗 生成分享链接</button>
+                <button class="btn btn-import" onclick="importData()">📥 导入</button>
+                <button class="btn btn-clear" onclick="clearAll()">清空全部</button>
+            </div>
+        </div>
+        <div class="columns" id="printArea">
+            <div class="col col-bride">
+                <h2>👰 新娘流程</h2>
+                <ul class="timeline" id="timelineBride"></ul>
+                <div class="empty-tip" id="emptyTipBride">暂无流程节点</div>
+            </div>
+            <div class="col col-groom">
+                <h2>🤵 新郎流程</h2>
+                <ul class="timeline" id="timelineGroom"></ul>
+                <div class="empty-tip" id="emptyTipGroom">暂无流程节点</div>
+            </div>
+        </div>
+        <input type="file" id="importFile" accept=".json,.txt" style="display:none" onchange="onImportFile(this)">
+    </div>
+</div>
+
+<script>
+const STORAGE_KEY = "wedding_schedule_v2";
+const SIDES = { bride: "新娘", groom: "新郎" };
+
+// 默认流程（可自由增删改）
+const DEFAULT_ITEMS = [
+    // 新娘
+    { side: "bride", time: "05:00", name: "新娘起床洗漱", remark: "早餐简单吃一点" },
+    { side: "bride", time: "05:30", name: "化妆师到位，开始化妆", remark: "头饰、妆容约 2 小时" },
+    { side: "bride", time: "07:00", name: "伴娘就位，准备堵门", remark: "4 个堵门游戏道具就绪" },
+    { side: "bride", time: "07:50", name: "出门仪式、拜别父母", remark: "敬茶、红伞、换鞋" },
+    { side: "bride", time: "09:00", name: "到达新房", remark: "进门仪式、敬茶改口" },
+    { side: "bride", time: "09:30", name: "出发前往酒店", remark: "" },
+    { side: "bride", time: "10:58", name: "婚礼仪式开始", remark: "吉时" },
+    // 新郎
+    { side: "groom", time: "05:30", name: "新郎起床着装", remark: "胸花、红包清点" },
+    { side: "groom", time: "06:00", name: "婚车队伍集合出发", remark: "路线、红包带齐" },
+    { side: "groom", time: "06:50", name: "到达女方家", remark: "" },
+    { side: "groom", time: "07:00", name: "接亲堵门游戏", remark: "共 4 个游戏，约 1 小时" },
+    { side: "groom", time: "07:50", name: "接亲完成，出发回新房", remark: "车程约 70 分钟" },
+    { side: "groom", time: "09:00", name: "到达新房", remark: "" },
+    { side: "groom", time: "09:30", name: "出发前往酒店", remark: "" },
+    { side: "groom", time: "10:58", name: "婚礼仪式开始", remark: "吉时" }
+];
+
+let items = loadItems();
+let editingId = null;
+
+render();
+setInterval(tickNow, 1000);
+// 打开时若链接带有分享数据，自动询问导入
+window.addEventListener("hashchange", checkHash);
+checkHash();
+
+window.addEventListener("storage", e => {
+    // 同一浏览器其他标签页修改时自动同步
+    if (e.key === STORAGE_KEY) {
+        items = loadItems();
+        render();
+    }
+});
+
+function loadItems() {
+    try {
+        const v = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        if (Array.isArray(v) && v.length) {
+            // 兼容旧版数据（无 side 字段默认归新娘）
+            return v.map(x => ({ id: x.id || Date.now() + Math.random(), side: x.side || "bride", time: x.time, name: x.name, remark: x.remark || "" }));
+        }
+    } catch (e) { /* 忽略损坏数据 */ }
+    return JSON.parse(JSON.stringify(DEFAULT_ITEMS)).map(x => ({ id: Date.now() + Math.random(), ...x }));
+}
+
+function saveItems() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+}
+
+// ========== 增删改 ==========
+function addItem() {
+    const time = document.getElementById("fTime").value;
+    const name = document.getElementById("fName").value.trim();
+    if (!time) { alert("请选择时间"); return; }
+    if (!name) { alert("请填写事项名称"); return; }
+
+    items.push({
+        id: Date.now(),
+        side: document.getElementById("fSide").value,
+        time: time,
+        name: name,
+        remark: document.getElementById("fRemark").value.trim()
+    });
+    saveItems();
+    render();
+    document.getElementById("fName").value = "";
+    document.getElementById("fRemark").value = "";
+}
+
+function startEdit(id) {
+    const it = items.find(x => x.id === id);
+    if (!it) return;
+    editingId = id;
+    document.getElementById("fSide").value = it.side;
+    document.getElementById("fTime").value = it.time;
+    document.getElementById("fName").value = it.name;
+    document.getElementById("fRemark").value = it.remark || "";
+    document.getElementById("btnAdd").style.display = "none";
+    document.getElementById("btnSave").style.display = "";
+    document.getElementById("btnCancel").style.display = "";
+    render();
+}
+
+function saveEdit() {
+    const it = items.find(x => x.id === editingId);
+    if (!it) { cancelEdit(); return; }
+    const time = document.getElementById("fTime").value;
+    const name = document.getElementById("fName").value.trim();
+    if (!time) { alert("请选择时间"); return; }
+    if (!name) { alert("请填写事项名称"); return; }
+    it.side = document.getElementById("fSide").value;
+    it.time = time;
+    it.name = name;
+    it.remark = document.getElementById("fRemark").value.trim();
+    saveItems();
+    cancelEdit();
+    render();
+}
+
+function cancelEdit() {
+    editingId = null;
+    document.getElementById("btnAdd").style.display = "";
+    document.getElementById("btnSave").style.display = "none";
+    document.getElementById("btnCancel").style.display = "none";
+    document.getElementById("fName").value = "";
+    document.getElementById("fRemark").value = "";
+    render();
+}
+
+function deleteItem(id) {
+    if (!confirm("确定删除这个流程节点吗？")) return;
+    items = items.filter(x => x.id !== id);
+    if (editingId === id) cancelEdit();
+    saveItems();
+    render();
+}
+
+function clearAll() {
+    if (!confirm("确定清空全部流程吗？此操作不可恢复！")) return;
+    items = [];
+    saveItems();
+    render();
+}
+
+// ========== 渲染 ==========
+function sortedBy(side) {
+    return items.filter(x => x.side === side).sort((a, b) => a.time.localeCompare(b.time));
+}
+
+function toMinutes(t) {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+}
+
+function renderSide(side, ulId, emptyTipId) {
+    const ul = document.getElementById(ulId);
+    const list = sortedBy(side);
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+
+    ul.innerHTML = list.map((it, i) => {
+        const gap = i > 0 ? toMinutes(it.time) - toMinutes(list[i - 1].time) : null;
+        const gapText = gap !== null && gap > 0 ? `距上一节点 ${Math.floor(gap / 60) ? Math.floor(gap / 60) + "小时" : ""}${gap % 60 ? (gap % 60) + "分钟" : ""}` : "";
+        const isDone = toMinutes(it.time) < nowMin;
+        const isCurrent = i < list.length - 1
+            ? toMinutes(it.time) <= nowMin && nowMin < toMinutes(list[i + 1].time)
+            : toMinutes(it.time) <= nowMin;
+        const cls = isCurrent ? "current" : (isDone ? "done" : "");
+        return `<li class="tl-item ${cls}">
+            <div class="tl-time">${it.time}</div>
+            <div class="tl-body">
+                <div class="tl-title">${escapeHtml(it.name)}</div>
+                ${it.remark ? `<div class="tl-remark">${escapeHtml(it.remark)}</div>` : ""}
+                ${gapText ? `<div class="tl-gap">⏱ ${gapText}</div>` : ""}
+                <div class="tl-actions">
+                    <span class="edit-link" onclick="startEdit(${it.id})">编辑</span>
+                    <span class="del-link" onclick="deleteItem(${it.id})">删除</span>
+                </div>
+            </div>
+        </li>`;
+    }).join("");
+    document.getElementById(emptyTipId).style.display = list.length ? "none" : "block";
+}
+
+function render() {
+    renderSide("bride", "timelineBride", "emptyTipBride");
+    renderSide("groom", "timelineGroom", "emptyTipGroom");
+    tickNow();
+}
+
+// ========== 当前时间 / 下一节点 ==========
+function tickNow() {
+    const now = new Date();
+    document.getElementById("nowTime").textContent =
+        now.toTimeString().slice(0, 5);
+    const list = [...items].sort((a, b) => a.time.localeCompare(b.time));
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const next = list.find(x => toMinutes(x.time) > nowMin);
+    const cur = [...list].reverse().find(x => toMinutes(x.time) <= nowMin);
+    const tag = x => `【${SIDES[x.side]}】`;
+    let html;
+    if (cur && next) {
+        const diff = toMinutes(next.time) - nowMin;
+        html = `正在：${tag(cur)}<b>${escapeHtml(cur.name)}</b><br>下一项：${next.time} ${tag(next)}${escapeHtml(next.name)}（还有 <b>${diff}</b> 分钟）`;
+    } else if (next) {
+        html = `下一项：${next.time} ${tag(next)}<b>${escapeHtml(next.name)}</b>（还有 <b>${toMinutes(next.time) - nowMin}</b> 分钟）`;
+    } else if (cur) {
+        html = `今日流程已全部结束 🎉`;
+    } else {
+        html = `暂无流程安排`;
+    }
+    document.getElementById("nextItem").innerHTML = html;
+}
+
+// ========== 导出 PDF ==========
+async function exportPDF() {
+    const btn = document.getElementById("btnPdf");
+    btn.disabled = true;
+    btn.textContent = "生成中…";
+    try {
+        const el = document.getElementById("printArea");
+        // 隐藏编辑/删除按钮，PDF 里不需要
+        el.querySelectorAll(".tl-actions").forEach(x => x.style.visibility = "hidden");
+        const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff" });
+        el.querySelectorAll(".tl-actions").forEach(x => x.style.visibility = "");
+
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF("p", "mm", "a4");
+        const pageW = 210, pageH = 297, margin = 10;
+        const imgW = pageW - margin * 2;
+        // 按页高切分长图
+        const pxPerPage = Math.floor(canvas.height * (pageH - margin * 2) / imgW);
+        let rendered = 0, page = 0;
+        while (rendered < canvas.height) {
+            const sliceH = Math.min(pxPerPage, canvas.height - rendered);
+            const tmp = document.createElement("canvas");
+            tmp.width = canvas.width;
+            tmp.height = sliceH;
+            tmp.getContext("2d").drawImage(canvas, 0, rendered, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+            if (page > 0) pdf.addPage();
+            pdf.addImage(tmp.toDataURL("image/jpeg", 0.95), "JPEG", margin, margin, imgW, sliceH * imgW / canvas.width);
+            rendered += sliceH;
+            page++;
+        }
+        pdf.save(`婚礼流程表_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (err) {
+        alert("导出 PDF 失败：" + err.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "📄 导出 PDF";
+    }
+}
+
+// ========== 分享链接 / 分享码 / 导入 ==========
+// 线上部署后（GitHub Pages 等）可生成真实链接，对方点开即自动导入；
+// 本地 file:// 打开时无公网地址，退化为分享码（复制文本粘贴导入）
+function encodeItems() {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(items))));
+}
+
+function decodeItems(code) {
+    const arr = JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
+    if (!Array.isArray(arr)) throw new Error("格式错误");
+    return arr.map(x => ({ id: x.id || Date.now() + Math.random(), side: x.side || "bride", time: x.time, name: x.name, remark: x.remark || "" }));
+}
+
+// 链接带 #d= 分享数据时自动弹出导入确认
+function checkHash() {
+    const m = location.hash.match(/^#d=(.+)$/);
+    if (!m) return;
+    try {
+        const imported = decodeItems(decodeURIComponent(m[1]));
+        if (confirm(`分享链接中包含 ${imported.length} 个流程节点，是否导入并覆盖当前流程？`)) {
+            items = imported;
+            saveItems();
+            render();
+        }
+    } catch (e) {
+        alert("分享链接数据无效");
+    }
+    history.replaceState(null, "", location.pathname);
+}
+
+function shareCode() {
+    if (location.protocol === "file:") {
+        // 本地文件：无公网地址，只能用分享码
+        const code = "HJLC1:" + encodeItems();
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(code).then(
+                () => alert("当前是本地文件，已复制分享码。\n\n通过微信发给对方，对方打开网页版后点「📥 导入」粘贴即可。\n（若已部署到网上，重新点此按钮可生成直开链接）"),
+                () => prompt("请手动复制分享码：", code)
+            );
+        } else {
+            prompt("请手动复制分享码：", code);
+        }
+        return;
+    }
+    // 线上：生成直开链接
+    const url = location.origin + location.pathname + "#d=" + encodeURIComponent(encodeItems());
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(
+            () => alert("分享链接已复制！\n\n发给对方（微信/QQ均可），点开即可自动加载这份流程。"),
+            () => prompt("请手动复制分享链接：", url)
+        );
+    } else {
+        prompt("请手动复制分享链接：", url);
+    }
+}
+
+function importData() {
+    const mode = prompt(
+        "请选择导入方式：\n\n" +
+        "输入 1 = 粘贴分享码（推荐，微信发来的那串文字）\n" +
+        "输入 2 = 选择 JSON 文件\n\n" +
+        "（直接点取消则不导入）", "1");
+    if (mode === "1") {
+        const code = prompt("请粘贴分享码（以 HJLC1: 开头的一串文字）：");
+        if (!code) return;
+        try {
+            const imported = decodeItems(code.replace(/^HJLC1:/, ""));
+            if (confirm(`解析到 ${imported.length} 个流程节点，是否覆盖当前流程？`)) {
+                items = imported;
+                saveItems();
+                render();
+                alert("导入成功！");
+            }
+        } catch (e) {
+            alert("分享码无效：" + e.message);
+        }
+    } else if (mode === "2") {
+        document.getElementById("importFile").click();
+    }
+}
+
+function onImportFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        try {
+            let imported;
+            const text = String(e.target.result);
+            if (text.trim().startsWith("HJLC1:")) {
+                imported = decodeItems(text.trim().replace(/^HJLC1:/, ""));
+            } else {
+                const arr = JSON.parse(text);
+                if (!Array.isArray(arr)) throw new Error("格式错误");
+                imported = arr.map(x => ({ id: x.id || Date.now() + Math.random(), side: x.side || "bride", time: x.time, name: x.name, remark: x.remark || "" }));
+            }
+            items = imported;
+            saveItems();
+            render();
+            alert(`导入成功，共 ${items.length} 个流程节点`);
+        } catch (err) {
+            alert("导入失败：" + err.message);
+        } finally {
+            input.value = "";
+        }
+    };
+    reader.readAsText(file);
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g,
+        c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+</script>
+</body>
+</html>
