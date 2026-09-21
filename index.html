@@ -124,6 +124,15 @@
         .tl-item::before { left: 36px; }
         .tl-time { flex: 0 0 60px; font-size: 13px; }
         .now-card .next-item { text-align: left; }
+        /* 手机端：操作按钮改为独立一行，避免与标题重叠 */
+        .tl-actions {
+            position: static; text-align: right; margin-top: 8px;
+            padding-top: 8px; border-top: 1px dashed #f0e0dc;
+        }
+        .tl-actions .edit-link, .tl-actions .del-link {
+            font-size: 14px; padding: 4px 8px;
+        }
+        .tl-actions .edit-link { margin-right: 0; }
     }
     </style>
 </head>
