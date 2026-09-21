@@ -53,6 +53,8 @@
     .btn-share { background: #2980b9; color: #fff; }
     .btn-import { background: #27ae60; color: #fff; }
     .btn-pdf { background: #8e44ad; color: #fff; }
+    .btn-cloud { background: #16a085; color: #fff; }
+    .btn-refresh { background: #f39c12; color: #fff; }
     .btn-clear { background: #fff; color: #c0392b; border: 1px solid #c0392b; }
 
     /* 双栏时间轴 */
@@ -127,7 +129,8 @@
 <body>
 <div class="container">
     <h1>💒 婚礼流程表</h1>
-    <div class="subtitle">新郎新娘双时间轴 · 实时进度 · 支持导出 PDF</div>
+    <div class="subtitle">新郎新娘双时间轴 · 数据云端同步（GitHub）· 支持导出 PDF</div>
+    <div style="text-align:center; font-size:12px; color:#999; margin:-12px 0 16px;" id="cloudStatus">数据源：本地</div>
 
     <div class="now-card">
         <div>
@@ -157,6 +160,8 @@
         <div class="toolbar">
             <h2>📖 当天流程</h2>
             <div>
+                <button class="btn btn-cloud" id="btnCloud" onclick="saveToCloud()">☁️ 保存到云端</button>
+                <button class="btn btn-refresh" onclick="initFromCloud(true)">🔄 刷新云端</button>
                 <button class="btn btn-pdf" id="btnPdf" onclick="exportPDF()">📄 导出 PDF</button>
                 <button class="btn btn-share" onclick="shareCode()">🔗 生成分享链接</button>
                 <button class="btn btn-import" onclick="importData()">📥 导入</button>
@@ -212,6 +217,8 @@ setInterval(tickNow, 1000);
 // 打开时若链接带有分享数据，自动询问导入
 window.addEventListener("hashchange", checkHash);
 checkHash();
+// 线上部署时，从云端拉取最新数据
+initFromCloud();
 
 window.addEventListener("storage", e => {
     // 同一浏览器其他标签页修改时自动同步
@@ -224,12 +231,19 @@ window.addEventListener("storage", e => {
 function loadItems() {
     try {
         const v = JSON.parse(localStorage.getItem(STORAGE_KEY));
-        if (Array.isArray(v) && v.length) {
-            // 兼容旧版数据（无 side 字段默认归新娘）
-            return v.map(x => ({ id: x.id || Date.now() + Math.random(), side: x.side || "bride", time: x.time, name: x.name, remark: x.remark || "" }));
-        }
+        if (Array.isArray(v) && v.length) return normalizeItems(v);
     } catch (e) { /* 忽略损坏数据 */ }
     return JSON.parse(JSON.stringify(DEFAULT_ITEMS)).map(x => ({ id: Date.now() + Math.random(), ...x }));
+}
+
+function normalizeItems(arr) {
+    return arr.map(x => ({
+        id: x.id || Date.now() + Math.random(),
+        side: x.side === "groom" ? "groom" : "bride",
+        time: x.time || "00:00",
+        name: x.name || "",
+        remark: x.remark || ""
+    }));
 }
 
 function saveItems() {
@@ -527,6 +541,110 @@ function onImportFile(input) {
         }
     };
     reader.readAsText(file);
+}
+
+// ========== 云端同步（GitHub data.json） ==========
+// 所有设备打开页面时拉取仓库里的 data.json，保存时通过 GitHub API 写回，
+// 从而实现多端看到同一份数据。
+// 读取无需任何凭证；写入需要一个 GitHub Personal Access Token（只存在发布者自己的浏览器里，不会写进仓库）
+const TOKEN_KEY = "wedding_gh_token";
+
+function cloudInfo() {
+    // 仅在 github.io 部署环境下启用；owner 取自主机名，repo 取自路径
+    const hm = location.host.match(/^([^.]+)\.github\.io$/i);
+    if (!hm) return null;
+    const pm = location.pathname.match(/^\/?([^\/]+)/);
+    if (!pm) return null;
+    return { owner: hm[1], repo: pm[1] };
+}
+
+async function initFromCloud(manual) {
+    const ci = cloudInfo();
+    if (!ci) return;
+    const status = document.getElementById("cloudStatus");
+    try {
+        // 时间戳参数绕过 CDN 缓存，确保每次读到最新
+        const url = `data.json?t=${Date.now()}`;
+        const res = await fetch(url);
+        if (res.status === 404) {
+            status.textContent = "云端暂无 data.json，当前为本地数据（点「保存到云端」可发布）";
+            return;
+        }
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const arr = await res.json();
+        if (!Array.isArray(arr) || !arr.length) throw new Error("数据格式错误");
+        items = normalizeItems(arr);
+        saveItems();  // 同步一份到本地作为备份
+        render();
+        status.textContent = "数据源：云端（" + items.length + " 个节点，更新于 " + new Date().toLocaleTimeString() + "）";
+    } catch (e) {
+        status.textContent = "云端数据加载失败，当前为本地数据";
+        if (manual) alert("刷新云端失败：" + e.message);
+    }
+}
+
+async function saveToCloud() {
+    const ci = cloudInfo();
+    if (!ci) {
+        alert("本地文件无法保存到云端。请先按文档把页面部署到 GitHub Pages，再使用此功能。");
+        return;
+    }
+
+    let token = localStorage.getItem(TOKEN_KEY);
+    if (!token) {
+        token = prompt(
+            "首次保存需要 GitHub 访问令牌（Token），用于把流程数据写回仓库。\n\n" +
+            "获取步骤（只需一次）：\n" +
+            "1. 打开 https://github.com/settings/tokens?type=beta\n" +
+            "2. Generate new token → 名称随意，如 wedding\n" +
+            "3. Repository access 选 Only select repositories → 选中 " + ci.repo + "\n" +
+            "4. Permissions → Repository permissions → Contents 选 Read and write\n" +
+            "5. 生成后复制粘贴到下面："
+        );
+        if (!token) return;
+        token = token.trim();
+        localStorage.setItem(TOKEN_KEY, token);
+    }
+
+    const btn = document.getElementById("btnCloud");
+    btn.disabled = true;
+    btn.textContent = "保存中…";
+    try {
+        const api = `https://api.github.com/repos/${ci.owner}/${ci.repo}/contents/data.json`;
+        // 先查当前文件的 sha（更新文件必须携带）
+        let sha = null;
+        const res = await fetch(api, { headers: { Authorization: "Bearer " + token, Accept: "application/vnd.github+json" } });
+        if (res.status === 200) {
+            sha = (await res.json()).sha;
+        } else if (res.status !== 404) {
+            if (res.status === 401) localStorage.removeItem(TOKEN_KEY);
+            throw new Error("读取云端文件失败 HTTP " + res.status + (res.status === 401 ? "（令牌无效，已清除，请重试）" : ""));
+        }
+
+        const content = btoa(unescape(encodeURIComponent(JSON.stringify(items, null, 2))));
+        const put = await fetch(api, {
+            method: "PUT",
+            headers: { Authorization: "Bearer " + token, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
+            body: JSON.stringify({
+                message: "更新婚礼流程 " + new Date().toLocaleString("zh-CN"),
+                content: content,
+                sha: sha
+            })
+        });
+        if (put.status === 401 || put.status === 403) {
+            localStorage.removeItem(TOKEN_KEY);
+            throw new Error("令牌无效或权限不足（需勾选 Contents: Read and write），已清除，请重新生成后再试");
+        }
+        if (!put.ok) throw new Error("HTTP " + put.status);
+
+        document.getElementById("cloudStatus").textContent = "数据源：云端（" + items.length + " 个节点，已发布 " + new Date().toLocaleTimeString() + "）";
+        alert("已保存到云端！\n\n其他设备刷新页面（或点「🔄 刷新云端」）即可看到最新流程。");
+    } catch (e) {
+        alert("云端保存失败：" + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "☁️ 保存到云端";
+    }
 }
 
 function escapeHtml(s) {

@@ -1,0 +1,17 @@
+[
+  { "side": "bride", "time": "05:00", "name": "新娘起床洗漱", "remark": "早餐简单吃一点" },
+  { "side": "bride", "time": "05:30", "name": "化妆师到位，开始化妆", "remark": "头饰、妆容约 2 小时" },
+  { "side": "bride", "time": "07:00", "name": "伴娘就位，准备堵门", "remark": "4 个堵门游戏道具就绪" },
+  { "side": "bride", "time": "07:50", "name": "出门仪式、拜别父母", "remark": "敬茶、红伞、换鞋" },
+  { "side": "bride", "time": "09:00", "name": "到达新房", "remark": "进门仪式、敬茶改口" },
+  { "side": "bride", "time": "09:30", "name": "出发前往酒店", "remark": "" },
+  { "side": "bride", "time": "10:58", "name": "婚礼仪式开始", "remark": "吉时" },
+  { "side": "groom", "time": "05:30", "name": "新郎起床着装", "remark": "胸花、红包清点" },
+  { "side": "groom", "time": "06:00", "name": "婚车队伍集合出发", "remark": "路线、红包带齐" },
+  { "side": "groom", "time": "06:50", "name": "到达女方家", "remark": "" },
+  { "side": "groom", "time": "07:00", "name": "接亲堵门游戏", "remark": "共 4 个游戏，约 1 小时" },
+  { "side": "groom", "time": "07:50", "name": "接亲完成，出发回新房", "remark": "车程约 70 分钟" },
+  { "side": "groom", "time": "09:00", "name": "到达新房", "remark": "" },
+  { "side": "groom", "time": "09:30", "name": "出发前往酒店", "remark": "" },
+  { "side": "groom", "time": "10:58", "name": "婚礼仪式开始", "remark": "吉时" }
+]
